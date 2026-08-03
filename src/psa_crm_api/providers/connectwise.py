@@ -164,7 +164,25 @@ class ConnectWiseManage(PSACRMProvider):
             text=note['text']
         )
     
-    async def get_contact(self, *, phone_number: Optional[str] = None, email_address: Optional[str] = None) -> ContactObject | None:
+    async def get_contact(
+            self,
+            *,
+            phone_number: Optional[str] = None,
+            email_address: Optional[str] = None,
+            company: bool = False   
+        ) -> ContactObject | CompanyBaseObject | None:
+        """Get CRM contact by phone_number or email_address
+
+        Args:
+            phone_number (str): Phone number to use for the lookup
+            email_address (str): Email address to use for the lookup
+            company (bool): When using a phone number and no match found, search for a company instead of contact. Defaults to False.
+
+        Returns:
+            ContactObject: A ContactObject instance with contact and company info
+            CompanyBaseObject: A CompanyBaseObject with company info (when company is True)
+            None: If no contact found
+        """
         if (phone_number == None) == (email_address == None):
             raise TypeError(
                 "You must provide either a phone number or an email address, but not both"
@@ -180,19 +198,40 @@ class ConnectWiseManage(PSACRMProvider):
             f'/company/contacts',
             params=args
         )
-        if not isinstance(contacts, list):
-            return
+
+        assert isinstance(contacts, list), "Invalid reponse model recieved from CW"
 
         try:
             contact = contacts[0]
         except IndexError:
+            pass
+        else:
+            return ContactObject(
+                contact_id=contact['id'],
+                name=f"{contact['firstName']} {contact['lastName']}",
+                company=CompanyBaseObject(
+                    company_id=contact['company']['id'],
+                    name=contact['company']['name']
+                )
+            )
+
+        if phone_number is None or company == False:
             return
         
-        return ContactObject(
-            contact_id=contact['id'],
-            name=f"{contact['firstName']} {contact['lastName']}",
-            company=CompanyBaseObject(
-                company_id=contact['company']['id'],
-                name=contact['company']['name']
-            )
+        companies = await self._request_json(
+            'GET',
+            f'/company/companies',
+            params={'conditions': f'phoneNumber={phone_number}'}
+        )
+
+        assert isinstance(companies, list), "Invalid reponse model recieved from CW"
+
+        try:
+            res_company = companies[0]
+        except IndexError:
+            return
+
+        return CompanyBaseObject(
+            company_id=res_company['id'],
+            name=res_company['name']
         )
