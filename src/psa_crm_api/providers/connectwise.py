@@ -1,0 +1,198 @@
+import aiohttp
+from typing import Optional
+from .base import PSACRMProvider
+from ..models import TicketObject, TicketNoteObject, ContactObject, TicketStatusObject, CompanyBaseObject, ContactBaseObject
+
+class ConnectWiseManage(PSACRMProvider):
+    def __init__(
+            self,
+            base_url: str,
+            company_id: str,
+            client_id: str,
+            public_key: str,
+            private_key: str
+        ) -> None:
+        self.base_url = base_url.rstrip('/')
+        self.company_id = company_id
+        self.client_id = client_id
+        self.public_key = public_key
+        self.private_key = private_key
+
+    def _build_url(self, path: str) -> str:
+        return f"{self.base_url}{path}"
+
+    def _build_auth(self):
+        if self.company_id and self.public_key and self.private_key:
+            return aiohttp.BasicAuth(login=f"{self.company_id}+{self.public_key}", password=self.private_key)
+        return None
+
+    def _build_headers(self) -> dict:
+        return {
+            'Accept': 'application/json',
+            'clientid': self.client_id,
+            'Content-Type': 'application/json',
+        }
+
+    async def _request_json(
+            self,
+            method: str,
+            path: str,
+            *,
+            json_body: Optional[dict | list[dict]] = None,
+            params: Optional[dict] = None
+        ) -> dict | list[dict]:
+
+        request_kwargs = {
+            'headers': self._build_headers(),
+            'auth': self._build_auth(),
+        }
+
+        if json_body is not None:
+            request_kwargs['json'] = json_body
+
+        if params is not None:
+            request_kwargs['params'] = params
+
+        async with aiohttp.ClientSession() as session:
+            async with session.request(method, self._build_url(path), **request_kwargs) as response:
+                if response.status >= 400:
+                    text = await response.text()
+                    raise RuntimeError(f"ConnectWise request failed with status {response.status}: {text}")
+
+                if response.status == 204:
+                    return {}
+
+                try:
+                    return await response.json()
+                except Exception:
+                    return {}
+
+    async def get_ticket(self, ticket_number: int) -> TicketObject:
+        ticket = await self._request_json(
+            'GET',
+            f'/service/tickets/{ticket_number}',
+            params={'fields': 'id,summary,closedFlag,status,company,contact,resourceList,contactEmailAddress,contactPhoneNumber'},
+        )
+
+        assert isinstance(ticket, dict), "Invalid response received"
+
+        try:
+            ticket_contact = ContactBaseObject(contact_id=ticket['contact']['id'], name=ticket['contact']['name'])
+        except KeyError:
+            ticket_contact = None        
+        
+        return TicketObject(
+            ticket_id=ticket['id'],
+            subject=ticket['summary'],
+            company=CompanyBaseObject(
+                company_id=ticket['company']['id'],
+                name=ticket['company']['name']
+            ),
+            contact=ticket_contact,
+            status=TicketStatusObject(
+                status_id=ticket['status']['id'],
+                name=ticket['status']['name']
+            ),
+            contact_email=ticket.get('contactEmailAddress'),
+            contact_phone=ticket.get('contactPhoneNumber'),
+            is_open=ticket['closedFlag'] == False
+        )
+
+    async def update_ticket_status(self, ticket_number: int, status_id: int) -> TicketStatusObject:
+        status = await self._request_json(
+            'PATCH',
+            f'/service/tickets/{ticket_number}',
+            json_body=[{"op": "replace", "path": "status", "value": {'id': status_id}}],
+        )
+
+        assert isinstance(status, dict), "Invalid response received"
+
+        return TicketStatusObject(
+            status_id=status['status']['id'],
+            name=status['status']['name']
+        )
+        
+    
+    async def get_ticket_note(self, ticket_number: int, note_id: int) -> TicketNoteObject:
+        note = await self._request_json(
+            'GET',
+            f'/service/tickets/{ticket_number}/notes/{note_id}',
+        )
+
+        assert isinstance(note, dict), "Invalid response received"
+
+        return TicketNoteObject(
+            note_id=note['id'],
+            text=note['text']
+        )
+
+    async def add_ticket_note(self, ticket_number: int, note_body: str) -> TicketNoteObject:
+        note = await self._request_json(
+            'POST',
+            f'/service/tickets/{ticket_number}/notes',
+            json_body={
+                'internalAnalysisFlag': True,
+                'resolutionFlag': False,
+                'detailDescriptionFlag': False,
+                'customerUpdatedFlag': True,
+                'text': note_body,
+            },
+        )
+
+        assert isinstance(note, dict), "Invalid response received"
+
+        return TicketNoteObject(
+            note_id=note['id'],
+            text=note['text']
+        )
+
+    async def update_ticket_note(self, ticket_number: int, note_id: int, note_body: str, append: bool) -> TicketNoteObject:
+        if append:
+            curent_note = await self.get_ticket_note(ticket_number=ticket_number, note_id=note_id)
+            note_body = f"{curent_note.text}\n\n{note_body}"
+        
+        note = await self._request_json(
+            'PATCH',
+            f'/service/tickets/{ticket_number}/notes/{note_id}',
+            json_body=[{"op": "replace", "path": "text", "value": note_body}],
+        )
+
+        assert isinstance(note, dict), "Invalid response received"
+
+        return TicketNoteObject(
+            note_id=note['id'],
+            text=note['text']
+        )
+    
+    async def get_contact(self, *, phone_number: Optional[str] = None, email_address: Optional[str] = None) -> ContactObject | None:
+        if (phone_number == None) == (email_address == None):
+            raise TypeError(
+                "You must provide either a phone number or an email address, but not both"
+            )
+        
+        lookup_type = 'Email' if email_address else 'Phone'
+        lookup_value = email_address or phone_number
+        args = {
+            'childconditions': f'communicationItems/communicationType="{lookup_type}" AND communicationItems/value="{lookup_value}"'
+        }
+        contacts = await self._request_json(
+            'GET',
+            f'/company/contacts',
+            params=args
+        )
+        if not isinstance(contacts, list):
+            return
+
+        try:
+            contact = contacts[0]
+        except IndexError:
+            return
+        
+        return ContactObject(
+            contact_id=contact['id'],
+            name=f"{contact['firstName']} {contact['lastName']}",
+            company=CompanyBaseObject(
+                company_id=contact['company']['id'],
+                name=contact['company']['name']
+            )
+        )

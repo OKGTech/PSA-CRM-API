@@ -1,0 +1,28 @@
+from abc import ABC, abstractmethod
+from ..models import TicketObject, ContactObject, TicketStatusObject, TicketNoteObject
+
+class PSACRMProvider(ABC):
+    
+    @abstractmethod
+    async def get_ticket(self, ticket_number: int) -> TicketObject:
+        pass
+
+    @abstractmethod
+    async def update_ticket_status(self, ticket_number: int, status_id: int) -> TicketStatusObject:
+        pass
+
+    @abstractmethod
+    async def get_ticket_note(self, ticket_number: int, note_id: int) -> TicketNoteObject:
+        pass
+    
+    @abstractmethod
+    async def add_ticket_note(self, ticket_number: int, note_body: str) -> TicketNoteObject:
+        pass
+
+    @abstractmethod
+    async def update_ticket_note(self, ticket_number: int, note_id: int, note_body: str, append: bool) -> TicketNoteObject:
+        pass
+
+    @abstractmethod
+    async def get_contact(self, *, phone_number: str, email_address: str) -> ContactObject | None:
+        pass
