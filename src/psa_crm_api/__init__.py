@@ -1,1 +1,1 @@
-from .client import PSAClient
+from .client import PSAClient as PSAClient

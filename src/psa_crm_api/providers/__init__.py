@@ -1,1 +1,1 @@
-from .connectwise import ConnectWiseManage
+from .connectwise import ConnectWiseManage as ConnectWiseManage
