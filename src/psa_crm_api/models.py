@@ -12,6 +12,11 @@ class ContactBaseObject(BaseModel):
 class ContactObject(ContactBaseObject):
     company: CompanyBaseObject
 
+class MemberObject(BaseModel):
+    member_id: int
+    username: str
+    name: str
+
 class TicketStatusObject(BaseModel):
     status_id: int
     name: Optional[str] = None
@@ -21,10 +26,11 @@ class TicketObject(BaseModel):
     subject: str
     status: TicketStatusObject
     company: CompanyBaseObject
-    contact: Optional[ContactBaseObject] = None    
+    contact: Optional[ContactBaseObject] = None
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None
     is_open: bool
+    resources: list[MemberObject] = []
 
 class TicketNoteObject(BaseModel):
     note_id: int

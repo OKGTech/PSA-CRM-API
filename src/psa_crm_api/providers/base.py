@@ -1,9 +1,13 @@
 from abc import ABC, abstractmethod
 from typing import Optional
-from ..models import TicketObject, ContactObject, TicketStatusObject, TicketNoteObject, CompanyBaseObject
+from ..models import TicketObject, ContactObject, TicketStatusObject, TicketNoteObject, CompanyBaseObject, MemberObject
 
 class PSACRMProvider(ABC):
     
+    @abstractmethod
+    async def get_member(self, member: int | str) -> MemberObject | None:
+        pass
+
     @abstractmethod
     async def get_ticket(self, ticket_number: int) -> TicketObject:
         pass

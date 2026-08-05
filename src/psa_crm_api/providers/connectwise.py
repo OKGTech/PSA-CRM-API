@@ -1,7 +1,7 @@
-import aiohttp
+import aiohttp, asyncio
 from typing import Optional
 from .base import PSACRMProvider
-from ..models import TicketObject, TicketNoteObject, ContactObject, TicketStatusObject, CompanyBaseObject, ContactBaseObject
+from ..models import TicketObject, TicketNoteObject, ContactObject, TicketStatusObject, CompanyBaseObject, ContactBaseObject, MemberObject
 
 class ConnectWiseManage(PSACRMProvider):
     def __init__(
@@ -67,11 +67,31 @@ class ConnectWiseManage(PSACRMProvider):
                 except Exception:
                     return {}
 
+    async def get_member(self, member: int | str) -> MemberObject | None:
+        """Get ConnectWise member by member id or username"""
+        member_res = await self._request_json(
+            'GET',
+            f'/system/member/{member}',
+            params={'fields': 'id,identifier,firstName,lastName,inactiveFlag'}
+        )
+
+        if not isinstance(member_res, dict):
+            return
+        if member_res['inactiveFlag']:
+            return
+
+        return MemberObject(
+            member_id=member_res['id'],
+            username=member_res['identifier'],
+            name=f"{member_res['firstName']} {member_res['lastName']}"
+        )
+
+
     async def get_ticket(self, ticket_number: int) -> TicketObject:
         ticket = await self._request_json(
             'GET',
             f'/service/tickets/{ticket_number}',
-            params={'fields': 'id,summary,closedFlag,status,company,contact,resourceList,contactEmailAddress,contactPhoneNumber'},
+            params={'fields': 'id,summary,closedFlag,status,company,contact,resources,contactEmailAddress,contactPhoneNumber'},
         )
 
         assert isinstance(ticket, dict), "Invalid response received"
@@ -79,7 +99,15 @@ class ConnectWiseManage(PSACRMProvider):
         try:
             ticket_contact = ContactBaseObject(contact_id=ticket['contact']['id'], name=ticket['contact']['name'])
         except KeyError:
-            ticket_contact = None        
+            ticket_contact = None    
+
+        try:
+            resources = [self.get_member(member) for member in ticket['resources'].split(',')]
+            members = await asyncio.gather(*resources)
+            resource_list = list(filter(None, members))
+        except (KeyError, AttributeError):
+            resource_list = []
+
         
         return TicketObject(
             ticket_id=ticket['id'],
@@ -95,7 +123,8 @@ class ConnectWiseManage(PSACRMProvider):
             ),
             contact_email=ticket.get('contactEmailAddress'),
             contact_phone=ticket.get('contactPhoneNumber'),
-            is_open=ticket['closedFlag'] == False
+            is_open=ticket['closedFlag'] == False,
+            resources=resource_list
         )
 
     async def update_ticket_status(self, ticket_number: int, status_id: int) -> TicketStatusObject:
