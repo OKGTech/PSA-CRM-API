@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from typing import Optional
 
 class CompanyBaseObject(BaseModel):
     company_id: int
@@ -19,18 +18,18 @@ class MemberObject(BaseModel):
 
 class TicketStatusObject(BaseModel):
     status_id: int
-    name: Optional[str] = None
+    name: str | None = None
 
 class TicketObject(BaseModel):
     ticket_id: int
     subject: str
     status: TicketStatusObject
     company: CompanyBaseObject
-    contact: Optional[ContactBaseObject] = None
-    contact_email: Optional[str] = None
-    contact_phone: Optional[str] = None
+    contact: ContactBaseObject | None = None
+    contact_email: str | None = None
+    contact_phone: str | None = None
     is_open: bool
-    resources: list[MemberObject] = []
+    resources: list[MemberObject] | None = None
 
 class TicketNoteObject(BaseModel):
     note_id: int

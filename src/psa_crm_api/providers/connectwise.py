@@ -39,7 +39,8 @@ class ConnectWiseManage(PSACRMProvider):
             path: str,
             *,
             json_body: Optional[dict | list[dict]] = None,
-            params: Optional[dict] = None
+            params: Optional[dict] = None,
+            raise_status: bool = True
         ) -> dict | list[dict]:
 
         request_kwargs = {
@@ -53,11 +54,8 @@ class ConnectWiseManage(PSACRMProvider):
         if params is not None:
             request_kwargs['params'] = params
 
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(raise_for_status=raise_status) as session:
             async with session.request(method, self._build_url(path), **request_kwargs) as response:
-                if response.status >= 400:
-                    text = await response.text()
-                    raise RuntimeError(f"ConnectWise request failed with status {response.status}: {text}")
 
                 if response.status == 204:
                     return {}
@@ -69,11 +67,14 @@ class ConnectWiseManage(PSACRMProvider):
 
     async def get_member(self, member: int | str) -> MemberObject | None:
         """Get ConnectWise member by member id or username"""
-        member_res = await self._request_json(
-            'GET',
-            f'/system/member/{member}',
-            params={'fields': 'id,identifier,firstName,lastName,inactiveFlag'}
-        )
+        try:
+            member_res = await self._request_json(
+                'GET',
+                f'/system/members/{member}',
+                params={'fields': 'id,identifier,firstName,lastName,inactiveFlag'}
+            )
+        except aiohttp.ClientResponseError:
+            return
 
         if not isinstance(member_res, dict):
             return
@@ -87,12 +88,15 @@ class ConnectWiseManage(PSACRMProvider):
         )
 
 
-    async def get_ticket(self, ticket_number: int) -> TicketObject:
-        ticket = await self._request_json(
-            'GET',
-            f'/service/tickets/{ticket_number}',
-            params={'fields': 'id,summary,closedFlag,status,company,contact,resources,contactEmailAddress,contactPhoneNumber'},
-        )
+    async def get_ticket(self, ticket_number: int) -> TicketObject | None:
+        try:
+            ticket = await self._request_json(
+                'GET',
+                f'/service/tickets/{ticket_number}',
+                params={'fields': 'id,summary,closedFlag,status,company,contact,resources,contactEmailAddress,contactPhoneNumber'},
+            )
+        except aiohttp.ClientResponseError:
+            return None
 
         assert isinstance(ticket, dict), "Invalid response received"
 
@@ -106,7 +110,7 @@ class ConnectWiseManage(PSACRMProvider):
             members = await asyncio.gather(*resources)
             resource_list = list(filter(None, members))
         except (KeyError, AttributeError):
-            resource_list = []
+            resource_list = None
 
         
         return TicketObject(

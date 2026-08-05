@@ -9,7 +9,7 @@ class PSACRMProvider(ABC):
         pass
 
     @abstractmethod
-    async def get_ticket(self, ticket_number: int) -> TicketObject:
+    async def get_ticket(self, ticket_number: int) -> TicketObject | None:
         pass
 
     @abstractmethod
