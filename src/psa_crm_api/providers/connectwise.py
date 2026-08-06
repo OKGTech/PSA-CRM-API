@@ -66,12 +66,20 @@ class ConnectWiseManage(PSACRMProvider):
                     return {}
 
     async def get_member(self, member: int | str) -> MemberObject | None:
-        """Get ConnectWise member by member id or username"""
+        """Get ConnectWise member by member id or username.
+
+        ### Required Permission.
+            | Module | Scope              | Access       |
+            |:-------|:-------------------|:-------------|
+            | System | Member Maintenance | Inquire > All|
+
+        """
+
         try:
             member_res = await self._request_json(
                 'GET',
                 f'/system/members/{member}',
-                params={'fields': 'id,identifier,firstName,lastName,inactiveFlag'}
+                params={'fields': 'id,identifier,firstName,lastName,inactiveFlag,officeExtension,officeEmail'}
             )
         except aiohttp.ClientResponseError:
             return
@@ -84,11 +92,60 @@ class ConnectWiseManage(PSACRMProvider):
         return MemberObject(
             member_id=member_res['id'],
             username=member_res['identifier'],
-            name=f"{member_res['firstName']} {member_res['lastName']}"
+            name=f"{member_res['firstName']} {member_res['lastName']}",
+            email=member_res['officeEmail'],
+            extension=member_res['officeExtension'],
         )
 
+    async def get_member_custom_fields(self, member: MemberObject, fields: list[int | str]) -> MemberObject:
+        """
+        Get custom fields for members.
+
+        Parameters:
+            member (MemberObject): Member Object from get_member
+            fields (list): List if fields IDs or captions
+        
+        ### Required Permission.
+            | Module | Scope      | Access        |
+            |:-------|:-----------|:--------------|
+            | System | My Account | Inquire > All |
+        """
+        try:
+            member_res = await self._request_json(
+                'GET',
+                f'/system/myaccount/{member.member_id}',
+                params={'fields': 'customFields'}
+            )
+        except aiohttp.ClientResponseError:
+            return member
+
+        assert isinstance(member_res, dict)
+
+        custom_fields = {}
+        for c in member_res.get('customFields', []):
+            field_id: int = c['id']
+            field_caption: str = c['caption']
+
+            if not field_id in fields and not field_caption in fields:
+                continue
+
+            custom_fields[field_id] = c['value']
+            custom_fields[field_caption] = c['value']
+
+        member.custom_fields = custom_fields
+
+        return member
 
     async def get_ticket(self, ticket_number: int) -> TicketObject | None:
+        """
+        ### Required Permission.
+            | Module       | Scope                | Access        |
+            |:-------------|:---------------------|:--------------|
+            | System       | Member Maintenance   | Inquire > All |
+            | Service Desk | Service Ticket       | Inquire > All |
+            | Service Desk | Close Service Ticket | Inquire > All |
+            | Service Desk | Resource Scheduling  | Inquire > All |
+        """
         try:
             ticket = await self._request_json(
                 'GET',

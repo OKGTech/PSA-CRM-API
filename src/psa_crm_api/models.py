@@ -15,6 +15,9 @@ class MemberObject(BaseModel):
     member_id: int
     username: str
     name: str
+    email: str
+    extension: int
+    custom_fields: dict[int | str, str] | None = None
 
 class TicketStatusObject(BaseModel):
     status_id: int
