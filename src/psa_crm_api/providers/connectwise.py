@@ -1,7 +1,17 @@
 import aiohttp, asyncio
 from typing import Optional
 from .base import PSACRMProvider
-from ..models import TicketObject, TicketNoteObject, ContactObject, TicketStatusObject, CompanyBaseObject, ContactBaseObject, MemberObject
+from ..models import (
+    TicketObject,
+    TicketNoteObject,
+    ContactObject,
+    TicketBoardObject,
+    TicketStatusObject,
+    CompanyBaseObject,
+    ContactBaseObject,
+    MemberObject,
+    CompanyObject
+)
 
 class ConnectWiseManage(PSACRMProvider):
     def __init__(
@@ -32,6 +42,16 @@ class ConnectWiseManage(PSACRMProvider):
             'clientid': self.client_id,
             'Content-Type': 'application/json',
         }
+
+    @staticmethod
+    def _parse_custom_fields(fields: list[dict], _filter: list[str | int] | None = None) -> dict[int | str, str | bool | int | None] | None:
+        cf = {
+            key: field.get('value')
+            for field in fields
+            for key in (field['id'], field['caption'])
+            if not _filter or field['id'] in _filter or field['caption'] in _filter
+        }
+        return cf or None
 
     async def _request_json(
             self,
@@ -121,18 +141,7 @@ class ConnectWiseManage(PSACRMProvider):
 
         assert isinstance(member_res, dict)
 
-        custom_fields = {}
-        for c in member_res.get('customFields', []):
-            field_id: int = c['id']
-            field_caption: str = c['caption']
-
-            if not field_id in fields and not field_caption in fields:
-                continue
-
-            custom_fields[field_id] = c['value']
-            custom_fields[field_caption] = c['value']
-
-        member.custom_fields = custom_fields
+        member.custom_fields = self._parse_custom_fields(member_res.get('customFields', []), fields)
 
         return member
 
@@ -150,7 +159,7 @@ class ConnectWiseManage(PSACRMProvider):
             ticket = await self._request_json(
                 'GET',
                 f'/service/tickets/{ticket_number}',
-                params={'fields': 'id,summary,closedFlag,status,company,contact,resources,contactEmailAddress,contactPhoneNumber'},
+                params={'fields': 'id,summary,closedFlag,board,status,company,contact,resources,contactEmailAddress,contactPhoneNumber'},
             )
         except aiohttp.ClientResponseError:
             return None
@@ -175,17 +184,21 @@ class ConnectWiseManage(PSACRMProvider):
             subject=ticket['summary'],
             company=CompanyBaseObject(
                 company_id=ticket['company']['id'],
-                name=ticket['company']['name']
+                name=ticket['company']['name'],
             ),
             contact=ticket_contact,
+            board=TicketBoardObject(
+                board_id=ticket['board']['id'],
+                name=ticket['board']['name'],
+            ),
             status=TicketStatusObject(
                 status_id=ticket['status']['id'],
-                name=ticket['status']['name']
+                name=ticket['status']['name'],
             ),
             contact_email=ticket.get('contactEmailAddress'),
             contact_phone=ticket.get('contactPhoneNumber'),
             is_open=ticket['closedFlag'] == False,
-            resources=resource_list
+            resources=resource_list,
         )
 
     async def update_ticket_status(self, ticket_number: int, status_id: int) -> TicketStatusObject:
@@ -324,4 +337,23 @@ class ConnectWiseManage(PSACRMProvider):
         return CompanyBaseObject(
             company_id=res_company['id'],
             name=res_company['name']
+        )
+
+    async def get_company(self, company_id: int) -> CompanyObject | None:
+        company = await self._request_json(
+            'GET',
+            f'company/companies/{company_id}',
+            params={'fields': 'id,name,types,customFields'}
+        )
+
+        assert isinstance(company, dict)
+
+        company_types = [t['name'] for t in company.get('types', [])]
+        custom_fields = self._parse_custom_fields(company.get('customFields', []))
+
+        return CompanyObject(
+            company_id=company['id'],
+            name=company['name'],
+            company_type=company_types,
+            custom_fields=custom_fields
         )
