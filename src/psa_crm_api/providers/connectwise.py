@@ -202,6 +202,13 @@ class ConnectWiseManage(PSACRMProvider):
         )
 
     async def update_ticket_status(self, ticket_number: int, status_id: int) -> TicketStatusObject:
+        """
+        ### Required Permission.
+            | Module       | Scope                | Access     |
+            |:-------------|:---------------------|:-----------|
+            | Service Desk | Service Ticket       | Edit > All |
+            | Service Desk | Close Service Ticket | Edit > All |
+        """
         status = await self._request_json(
             'PATCH',
             f'/service/tickets/{ticket_number}',
@@ -217,6 +224,12 @@ class ConnectWiseManage(PSACRMProvider):
         
     
     async def get_ticket_note(self, ticket_number: int, note_id: int) -> TicketNoteObject:
+        """
+        ### Required Permission.
+            | Module       | Scope                | Access        |
+            |:-------------|:---------------------|:--------------|
+            | Service Desk | Service Ticket       | Inquire > All |
+        """
         note = await self._request_json(
             'GET',
             f'/service/tickets/{ticket_number}/notes/{note_id}',
@@ -230,6 +243,12 @@ class ConnectWiseManage(PSACRMProvider):
         )
 
     async def add_ticket_note(self, ticket_number: int, note_body: str) -> TicketNoteObject:
+        """
+        ### Required Permission.
+            | Module       | Scope                | Access     |
+            |:-------------|:---------------------|:-----------|
+            | Service Desk | Service Ticket       | Edit > All |
+        """
         note = await self._request_json(
             'POST',
             f'/service/tickets/{ticket_number}/notes',
@@ -250,6 +269,12 @@ class ConnectWiseManage(PSACRMProvider):
         )
 
     async def update_ticket_note(self, ticket_number: int, note_id: int, note_body: str, append: bool) -> TicketNoteObject:
+        """
+        ### Required Permission.
+            | Module       | Scope                | Access     |
+            |:-------------|:---------------------|:-----------|
+            | Service Desk | Service Ticket       | Edit > All |
+        """
         if append:
             curent_note = await self.get_ticket_note(ticket_number=ticket_number, note_id=note_id)
             note_body = f"{curent_note.text}\n\n{note_body}"
@@ -285,6 +310,13 @@ class ConnectWiseManage(PSACRMProvider):
             ContactObject: A ContactObject instance with contact and company info
             CompanyBaseObject: A CompanyBaseObject with company info (when company is True)
             None: If no contact found
+
+        
+        ### Required Permission.
+            | Module       | Scope                | Access        |
+            |:-------------|:---------------------|:--------------|
+            | Companies    | Company Maintenance  | Inquire > All |
+            | Companies    | Contacts             | Inquire > All |
         """
         if (phone_number == None) == (email_address == None):
             raise TypeError(
@@ -324,7 +356,7 @@ class ConnectWiseManage(PSACRMProvider):
         companies = await self._request_json(
             'GET',
             f'/company/companies',
-            params={'conditions': f'phoneNumber={phone_number}'}
+            params={'conditions': f'phoneNumber="{phone_number}"'}
         )
 
         assert isinstance(companies, list), "Invalid reponse model recieved from CW"
@@ -340,6 +372,12 @@ class ConnectWiseManage(PSACRMProvider):
         )
 
     async def get_company(self, company_id: int) -> CompanyObject | None:
+        """
+        ### Required Permission.
+            | Module       | Scope                | Access        |
+            |:-------------|:---------------------|:--------------|
+            | Companies    | Company Maintenance  | Inquire > All |
+        """
         company = await self._request_json(
             'GET',
             f'company/companies/{company_id}',
