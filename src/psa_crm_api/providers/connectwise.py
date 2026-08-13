@@ -357,7 +357,7 @@ class ConnectWiseManage(PSACRMProvider):
         lookup_type = 'Email' if email_address else 'Phone'
         lookup_value = email_address or phone_number
         args = {
-            'childconditions': f'communicationItems/communicationType="{lookup_type}" AND communicationItems/value="{lookup_value}"'
+            'childconditions': f'communicationItems/communicationType="{lookup_type}" AND communicationItems/value="{lookup_value}" AND communicationItems/extension=null'
         }
         if not (contacts := await self._request_json(
             'GET',
