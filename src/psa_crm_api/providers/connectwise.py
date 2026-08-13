@@ -1,5 +1,7 @@
 import aiohttp
 import asyncio
+import json
+import random
 from typing import Optional
 from .base import PSACRMProvider
 from ..models import (
@@ -75,14 +77,28 @@ class ConnectWiseManage(PSACRMProvider):
             request_kwargs['params'] = params
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.request(method, self._build_url(path), **request_kwargs) as response:
-                    if response.status not in range(200, 203):
-                        return None
+            base_delay = 1
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
+                for attempt in range(6):
+                    calculated_delay = base_delay * (2 ** attempt)
+                    sleep_time = random.uniform(calculated_delay / 2, calculated_delay)
                     try:
-                        return await response.json()
-                    except aiohttp.ContentTypeError:
-                        return None
+                        async with session.request(method, self._build_url(path), **request_kwargs) as response:
+
+                            if response.status in range(500, 505):
+                                await asyncio.sleep(sleep_time)
+                                continue
+
+                            if response.status not in range(200, 203):
+                                return None
+                            
+                            try:
+                                return await response.json()
+                            except (aiohttp.ContentTypeError, json.JSONDecodeError):
+                                return None
+                    except aiohttp.ClientError:
+                        await asyncio.sleep(sleep_time)
+                        continue
         except asyncio.TimeoutError:
             return None
 
@@ -299,7 +315,8 @@ class ConnectWiseManage(PSACRMProvider):
         Args:
             phone_number (str): Phone number to use for the lookup
             email_address (str): Email address to use for the lookup
-            company (bool): When using a phone number and no match found, search for a company instead of contact. Defaults to False.
+            company (bool): When using a phone number and no match found, 
+                search for a company before searching contact. Defaults to False.
 
         Returns:
             ContactObject: A ContactObject instance with contact and company info
@@ -317,6 +334,25 @@ class ConnectWiseManage(PSACRMProvider):
             raise TypeError(
                 "You must provide either a phone number or an email address, but not both"
             )
+
+        if phone_number and company:
+            companies = await self._request_json(
+                'GET',
+                f'/company/companies',
+                params={'conditions': f'phoneNumber="{phone_number}"'}
+            )
+
+            assert isinstance(companies, list)
+
+            try:
+                res_company = companies[0]
+            except IndexError:
+                pass
+            else:
+                return CompanyBaseObject(
+                    company_id=res_company['id'],
+                    name=res_company['name']
+                )
         
         lookup_type = 'Email' if email_address else 'Phone'
         lookup_value = email_address or phone_number
@@ -335,36 +371,15 @@ class ConnectWiseManage(PSACRMProvider):
         try:
             contact = contacts[0]
         except IndexError:
-            pass
-        else:
-            return ContactObject(
-                contact_id=contact['id'],
-                name=f"{contact['firstName']} {contact['lastName']}",
-                company=CompanyBaseObject(
-                    company_id=contact['company']['id'],
-                    name=contact['company']['name']
-                )
-            )
-
-        if phone_number is None or company == False:
             return
         
-        companies = await self._request_json(
-            'GET',
-            f'/company/companies',
-            params={'conditions': f'phoneNumber="{phone_number}"'}
-        )
-
-        assert isinstance(companies, list), "Invalid reponse model recieved from CW"
-
-        try:
-            res_company = companies[0]
-        except IndexError:
-            return
-
-        return CompanyBaseObject(
-            company_id=res_company['id'],
-            name=res_company['name']
+        return ContactObject(
+            contact_id=contact['id'],
+            name=f"{contact['firstName']} {contact['lastName']}",
+            company=CompanyBaseObject(
+                company_id=contact['company']['id'],
+                name=contact['company']['name']
+            )
         )
 
     async def get_company(self, company_id: int) -> CompanyObject | None:
