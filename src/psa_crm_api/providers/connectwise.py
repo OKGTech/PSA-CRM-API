@@ -1,4 +1,5 @@
-import aiohttp, asyncio
+import aiohttp
+import asyncio
 from typing import Optional
 from .base import PSACRMProvider
 from ..models import (
@@ -60,8 +61,7 @@ class ConnectWiseManage(PSACRMProvider):
             *,
             json_body: Optional[dict | list[dict]] = None,
             params: Optional[dict] = None,
-            raise_status: bool = True
-        ) -> dict | list[dict]:
+        ) -> dict | list[dict] | None:
 
         request_kwargs = {
             'headers': self._build_headers(),
@@ -74,19 +74,20 @@ class ConnectWiseManage(PSACRMProvider):
         if params is not None:
             request_kwargs['params'] = params
 
-        async with aiohttp.ClientSession(raise_for_status=raise_status) as session:
-            async with session.request(method, self._build_url(path), **request_kwargs) as response:
-
-                if response.status == 204:
-                    return {}
-
-                try:
-                    return await response.json()
-                except Exception:
-                    return {}
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.request(method, self._build_url(path), **request_kwargs) as response:
+                    if response.status not in range(200, 203):
+                        return None
+                    try:
+                        return await response.json()
+                    except aiohttp.ContentTypeError:
+                        return None
+        except asyncio.TimeoutError:
+            return None
 
     async def get_member(self, member: int | str) -> MemberObject | None:
-        """Get ConnectWise member by member id or username.
+        """Get ConnectWise member by member id or username, only active members.
 
         ### Required Permission.
             | Module | Scope              | Access       |
@@ -95,17 +96,15 @@ class ConnectWiseManage(PSACRMProvider):
 
         """
 
-        try:
-            member_res = await self._request_json(
-                'GET',
-                f'/system/members/{member}',
-                params={'fields': 'id,identifier,firstName,lastName,inactiveFlag,officeExtension,officeEmail'}
-            )
-        except aiohttp.ClientResponseError:
+        if not (member_res := await self._request_json(
+            'GET',
+            f'/system/members/{member}',
+            params={'fields': 'id,identifier,firstName,lastName,inactiveFlag,officeExtension,officeEmail'}
+        )):
             return
 
-        if not isinstance(member_res, dict):
-            return
+        assert isinstance(member_res, dict)
+
         if member_res['inactiveFlag']:
             return
 
@@ -130,13 +129,11 @@ class ConnectWiseManage(PSACRMProvider):
             |:-------|:-----------|:--------------|
             | System | My Account | Inquire > All |
         """
-        try:
-            member_res = await self._request_json(
-                'GET',
-                f'/system/myaccount/{member.member_id}',
-                params={'fields': 'customFields'}
-            )
-        except aiohttp.ClientResponseError:
+        if not (member_res := await self._request_json(
+            'GET',
+            f'/system/myaccount/{member.member_id}',
+            params={'fields': 'customFields'}
+        )):
             return member
 
         assert isinstance(member_res, dict)
@@ -155,13 +152,11 @@ class ConnectWiseManage(PSACRMProvider):
             | Service Desk | Close Service Ticket | Inquire > All |
             | Service Desk | Resource Scheduling  | Inquire > All |
         """
-        try:
-            ticket = await self._request_json(
-                'GET',
-                f'/service/tickets/{ticket_number}',
-                params={'fields': 'id,summary,closedFlag,board,status,company,contact,resources,contactEmailAddress,contactPhoneNumber'},
-            )
-        except aiohttp.ClientResponseError:
+        if not (ticket := await self._request_json(
+            'GET',
+            f'/service/tickets/{ticket_number}',
+            params={'fields': 'id,summary,closedFlag,board,status,company,contact,resources,contactEmailAddress,contactPhoneNumber'},
+        )):
             return None
 
         assert isinstance(ticket, dict), "Invalid response received"
@@ -223,17 +218,18 @@ class ConnectWiseManage(PSACRMProvider):
         )
         
     
-    async def get_ticket_note(self, ticket_number: int, note_id: int) -> TicketNoteObject:
+    async def get_ticket_note(self, ticket_number: int, note_id: int) -> TicketNoteObject | None:
         """
         ### Required Permission.
             | Module       | Scope                | Access        |
             |:-------------|:---------------------|:--------------|
             | Service Desk | Service Ticket       | Inquire > All |
         """
-        note = await self._request_json(
+        if not (note := await self._request_json(
             'GET',
             f'/service/tickets/{ticket_number}/notes/{note_id}',
-        )
+        )):
+            return None
 
         assert isinstance(note, dict), "Invalid response received"
 
@@ -275,8 +271,7 @@ class ConnectWiseManage(PSACRMProvider):
             |:-------------|:---------------------|:-----------|
             | Service Desk | Service Ticket       | Edit > All |
         """
-        if append:
-            curent_note = await self.get_ticket_note(ticket_number=ticket_number, note_id=note_id)
+        if append and (curent_note := await self.get_ticket_note(ticket_number=ticket_number, note_id=note_id)):
             note_body = f"{curent_note.text}\n\n{note_body}"
         
         note = await self._request_json(
@@ -328,11 +323,12 @@ class ConnectWiseManage(PSACRMProvider):
         args = {
             'childconditions': f'communicationItems/communicationType="{lookup_type}" AND communicationItems/value="{lookup_value}"'
         }
-        contacts = await self._request_json(
+        if not (contacts := await self._request_json(
             'GET',
             f'/company/contacts',
             params=args
-        )
+        )):
+            return None
 
         assert isinstance(contacts, list), "Invalid reponse model recieved from CW"
 
@@ -378,11 +374,12 @@ class ConnectWiseManage(PSACRMProvider):
             |:-------------|:---------------------|:--------------|
             | Companies    | Company Maintenance  | Inquire > All |
         """
-        company = await self._request_json(
+        if not (company := await self._request_json(
             'GET',
-            f'company/companies/{company_id}',
+            f'/company/companies/{company_id}',
             params={'fields': 'id,name,types,customFields'}
-        )
+        )):
+            return None
 
         assert isinstance(company, dict)
 

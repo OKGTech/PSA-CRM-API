@@ -1,6 +1,14 @@
 from abc import ABC, abstractmethod
 from typing import Optional
-from ..models import TicketObject, ContactObject, TicketStatusObject, TicketNoteObject, CompanyBaseObject, MemberObject
+from ..models import (
+    TicketObject,
+    ContactObject,
+    TicketStatusObject,
+    TicketNoteObject,
+    CompanyBaseObject,
+    MemberObject,
+    CompanyObject
+)
 
 class PSACRMProvider(ABC):
     
@@ -17,7 +25,7 @@ class PSACRMProvider(ABC):
         pass
 
     @abstractmethod
-    async def get_ticket_note(self, ticket_number: int, note_id: int) -> TicketNoteObject:
+    async def get_ticket_note(self, ticket_number: int, note_id: int) -> TicketNoteObject | None:
         pass
     
     @abstractmethod
@@ -36,4 +44,8 @@ class PSACRMProvider(ABC):
             email_address: Optional[str] = None,
             company: bool = False   
         ) -> ContactObject | CompanyBaseObject | None:
+        pass
+
+    @abstractmethod
+    async def get_company(self, company_id: int) -> CompanyObject | None:
         pass
