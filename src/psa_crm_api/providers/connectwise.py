@@ -407,3 +407,53 @@ class ConnectWiseManage(PSACRMProvider):
             company_type=company_types,
             custom_fields=custom_fields
         )
+
+    async def create_ticket(
+            self,
+            *,
+            board: TicketBoardObject | int,
+            company: CompanyBaseObject | int,
+            summary: str,
+            status: TicketStatusObject | int | None = None,
+            contact: ContactBaseObject | int | None = None,
+            contact_name: str | None = None,
+            contact_phone: str | None = None,
+            contact_ext: str | None = None,
+            contact_email: str | None = None,
+            initial_description: str | None = None,
+    ) -> TicketObject | None:
+        board_id = board.board_id if isinstance(board, TicketBoardObject) else board
+        company_id = company.company_id if isinstance(company, CompanyBaseObject) else company
+        status_id = status.status_id if isinstance(status, TicketStatusObject) else status
+        contact_id = contact.contact_id if isinstance(contact, ContactBaseObject) else contact
+
+        ticket_body: dict[str, str | int | dict[str, int]] = {
+            "summary": summary,
+            "board": {
+                "id": board_id
+            },
+            "company:": {
+                "id": company_id
+            },
+        }
+
+        if status_id: ticket_body["status"] = {"id": status_id}
+        
+        if contact_id:
+            ticket_body["contact"] = {"id": contact_id}
+        else:
+            if contact_name: ticket_body['contact_name'] = contact_name
+            if contact_phone: ticket_body['contact_phone'] = contact_phone
+            if contact_ext: ticket_body['contact_ext'] = contact_ext
+            if contact_email: ticket_body['contact_email'] = contact_email
+        
+        if initial_description: ticket_body['initial_description'] = initial_description
+
+        if ticket := await self._request_json(
+            'POST',
+            path='/service/tickets',
+            json_body=ticket_body
+        ):
+            assert isinstance(ticket, dict)
+            return await self.get_ticket(ticket_number=ticket['id'])
+        return None
