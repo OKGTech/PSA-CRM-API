@@ -432,7 +432,7 @@ class ConnectWiseManage(PSACRMProvider):
             "board": {
                 "id": board_id
             },
-            "company:": {
+            "company": {
                 "id": company_id
             },
         }
@@ -442,12 +442,12 @@ class ConnectWiseManage(PSACRMProvider):
         if contact_id:
             ticket_body["contact"] = {"id": contact_id}
         else:
-            if contact_name: ticket_body['contact_name'] = contact_name
-            if contact_phone: ticket_body['contact_phone'] = contact_phone
-            if contact_ext: ticket_body['contact_ext'] = contact_ext
-            if contact_email: ticket_body['contact_email'] = contact_email
+            if contact_name: ticket_body['contactName'] = contact_name
+            if contact_phone: ticket_body['contactPhoneNumber'] = contact_phone
+            if contact_ext: ticket_body['contactPhoneExtension'] = contact_ext
+            if contact_email: ticket_body['contactEmailAddress'] = contact_email
         
-        if initial_description: ticket_body['initial_description'] = initial_description
+        if initial_description: ticket_body['initialDescription'] = initial_description
 
         if ticket := await self._request_json(
             'POST',
